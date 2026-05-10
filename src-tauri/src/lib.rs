@@ -102,6 +102,12 @@ pub fn run() {
             commands::list_remote_files,
             commands::import_rclone_config,
             commands::export_rclone_config,
+            // File Browser
+            commands::browse_remote_files,
+            commands::upload_local_files,
+            commands::download_remote_files,
+            commands::delete_remote_item,
+            commands::create_remote_folder,
             // Tasks
             commands::create_task,
             commands::update_task,
@@ -128,6 +134,7 @@ pub fn run() {
             commands::stop_rclone,
             // Dialog
             commands::pick_directory,
+            commands::pick_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

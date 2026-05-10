@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { MainLayout } from "@/components/MainLayout";
 import { ConfigPage } from "@/pages/ConfigPage";
+import { FileBrowserPage } from "@/pages/FileBrowserPage";
 import { TasksPage } from "@/pages/TasksPage";
 import { DiffPage } from "@/pages/DiffPage";
 import { LogsPage } from "@/pages/LogsPage";
@@ -49,6 +50,7 @@ export default function App() {
           <Route element={<MainLayout />}>
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/config" element={<ConfigPage />} />
+            <Route path="/files" element={<FileBrowserPage />} />
             <Route path="/diff" element={<DiffPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/settings" element={<SettingsPage />} />

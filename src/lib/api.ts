@@ -8,6 +8,7 @@ import type {
   AppSetting,
   TaskRuntimeState,
   RemoteFile,
+  FileTransferResult,
 } from "@/lib/types";
 
 // ---- Config / Remote ----
@@ -140,4 +141,45 @@ export async function stopRclone(): Promise<void> {
 // ---- File Dialog ----
 export async function pickDirectory(): Promise<string | null> {
   return invoke("pick_directory");
+}
+
+// ---- File Browser ----
+export async function browseRemoteFiles(remoteName: string, path: string): Promise<RemoteFile[]> {
+  return invoke("browse_remote_files", { remoteName, path });
+}
+
+export async function uploadLocalFiles(
+  localPaths: string[],
+  remoteName: string,
+  remotePath: string,
+): Promise<FileTransferResult[]> {
+  return invoke("upload_local_files", { localPaths, remoteName, remotePath });
+}
+
+export async function downloadRemoteFiles(
+  remoteName: string,
+  remoteFiles: string[],
+  localDir: string,
+): Promise<FileTransferResult[]> {
+  return invoke("download_remote_files", { remoteName, remoteFiles, localDir });
+}
+
+export async function deleteRemoteItem(
+  remoteName: string,
+  path: string,
+  isDir: boolean,
+): Promise<void> {
+  return invoke("delete_remote_item", { remoteName, path, isDir });
+}
+
+export async function createRemoteFolder(
+  remoteName: string,
+  remotePath: string,
+  folderName: string,
+): Promise<void> {
+  return invoke("create_remote_folder", { remoteName, remotePath, folderName });
+}
+
+export async function pickFiles(): Promise<string[] | null> {
+  return invoke("pick_files");
 }

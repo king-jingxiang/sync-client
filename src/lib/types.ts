@@ -77,3 +77,9 @@ export interface RemoteFile {
   size: number;
   mod_time: string;
 }
+
+export interface FileTransferResult {
+  success: boolean;
+  path: string;
+  error: string | null;
+}

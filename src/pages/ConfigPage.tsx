@@ -16,7 +16,9 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Plus, Trash2, Plug, HardDrive, FolderOpen } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import * as api from "@/lib/api";
+import { useFileStore } from "@/stores/fileStore";
 
 const STORAGE_TYPES = [
   { value: "s3", label: "Amazon S3" },
@@ -78,6 +80,8 @@ const TYPE_PARAMS: Record<string, { key: string; label: string; password?: boole
 
 export function ConfigPage() {
   const { remotes, loading, error, fetchRemotes, createRemote, deleteRemote, testConnection } = useConfigStore();
+  const browse = useFileStore((s) => s.browse);
+  const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [testingName, setTestingName] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ name: string; success: boolean; message: string } | null>(null);
@@ -131,6 +135,17 @@ export function ConfigPage() {
                   <Badge variant="secondary">{remote.type}</Badge>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      await browse(remote.name, "");
+                      navigate("/files");
+                    }}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    浏览文件
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"

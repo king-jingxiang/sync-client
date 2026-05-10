@@ -6,11 +6,13 @@ import {
   HardDrive,
   FileText,
   GitCompareArrows,
+  FolderSearch,
 } from "lucide-react";
 
 const navItems = [
   { to: "/tasks", label: "同步任务", icon: FolderSync },
   { to: "/config", label: "配置管理", icon: HardDrive },
+  { to: "/files", label: "文件浏览", icon: FolderSearch },
   { to: "/diff", label: "差异对比", icon: GitCompareArrows },
   { to: "/logs", label: "同步日志", icon: FileText },
   { to: "/settings", label: "全局设置", icon: Settings },

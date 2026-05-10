@@ -119,3 +119,10 @@ pub struct RemoteFile {
     pub size: i64,
     pub mod_time: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileTransferResult {
+    pub success: bool,
+    pub path: String,
+    pub error: Option<String>,
+}

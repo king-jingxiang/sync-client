@@ -69,6 +69,172 @@ pub fn export_rclone_config(_state: State<'_, AppState>, _dest_path: String) -> 
     Err("Not implemented yet".to_string())
 }
 
+// ---- File Browser Commands ----
+
+#[tauri::command]
+pub fn browse_remote_files(
+    state: State<'_, AppState>,
+    remote_name: String,
+    path: String,
+) -> Result<Vec<RemoteFile>, String> {
+    let mut files = state.rclone.list_remote_files(&remote_name, &path)?;
+    // Sort: directories first, then alphabetically (case-insensitive)
+    files.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+    Ok(files)
+}
+
+#[tauri::command]
+pub async fn upload_local_files(
+    state: State<'_, AppState>,
+    local_paths: Vec<String>,
+    remote_name: String,
+    remote_path: String,
+) -> Result<Vec<FileTransferResult>, String> {
+    let rclone = state.rclone.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut results = Vec::new();
+        let dst_fs = format!("{}:", remote_name);
+        for local_path in local_paths {
+            let path = std::path::Path::new(&local_path);
+            let file_name = match path.file_name() {
+                Some(n) => n.to_string_lossy().to_string(),
+                None => {
+                    results.push(FileTransferResult {
+                        success: false,
+                        path: local_path.clone(),
+                        error: Some("Invalid file path".to_string()),
+                    });
+                    continue;
+                }
+            };
+            let remote_file_path = if remote_path.is_empty() || remote_path == "/" {
+                file_name.clone()
+            } else {
+                format!("{}/{}", remote_path.trim_end_matches('/'), file_name)
+            };
+            let local_dir = match path.parent() {
+                Some(p) => p.to_string_lossy().to_string(),
+                None => {
+                    results.push(FileTransferResult {
+                        success: false,
+                        path: local_path.clone(),
+                        error: Some("Cannot determine parent directory".to_string()),
+                    });
+                    continue;
+                }
+            };
+            match rclone.copy_file(&local_dir, &file_name, &dst_fs, &remote_file_path) {
+                Ok(_) => results.push(FileTransferResult {
+                    success: true,
+                    path: local_path.clone(),
+                    error: None,
+                }),
+                Err(e) => results.push(FileTransferResult {
+                    success: false,
+                    path: local_path.clone(),
+                    error: Some(e),
+                }),
+            }
+        }
+        Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn download_remote_files(
+    state: State<'_, AppState>,
+    remote_name: String,
+    remote_files: Vec<String>,
+    local_dir: String,
+) -> Result<Vec<FileTransferResult>, String> {
+    let rclone = state.rclone.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut results = Vec::new();
+        let src_fs = format!("{}:", remote_name);
+        for remote_file in remote_files {
+            let path = std::path::Path::new(&remote_file);
+            let file_name = match path.file_name() {
+                Some(n) => n.to_string_lossy().to_string(),
+                None => remote_file.clone(),
+            };
+            match rclone.copy_file(&src_fs, &remote_file, &local_dir, &file_name) {
+                Ok(_) => results.push(FileTransferResult {
+                    success: true,
+                    path: remote_file.clone(),
+                    error: None,
+                }),
+                Err(e) => results.push(FileTransferResult {
+                    success: false,
+                    path: remote_file.clone(),
+                    error: Some(e),
+                }),
+            }
+        }
+        Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn delete_remote_item(
+    state: State<'_, AppState>,
+    remote_name: String,
+    path: String,
+    is_dir: bool,
+) -> Result<(), String> {
+    let rclone = state.rclone.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let fs = format!("{}:", remote_name);
+        if is_dir {
+            rclone.purge_dir(&fs, &path)
+        } else {
+            rclone.delete_file(&fs, &path)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn create_remote_folder(
+    state: State<'_, AppState>,
+    remote_name: String,
+    remote_path: String,
+    folder_name: String,
+) -> Result<(), String> {
+    let rclone = state.rclone.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let fs = format!("{}:", remote_name);
+        let folder_path = if remote_path.is_empty() || remote_path == "/" {
+            folder_name
+        } else {
+            format!("{}/{}", remote_path.trim_end_matches('/'), folder_name)
+        };
+        rclone.mkdir(&fs, &folder_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn pick_files(app_handle: tauri::AppHandle) -> Result<Option<Vec<String>>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let files = app_handle.dialog().file().blocking_pick_files();
+    match files {
+        Some(paths) => Ok(Some(
+            paths.iter().map(|p| p.to_string()).collect(),
+        )),
+        None => Ok(None),
+    }
+}
+
 // ---- Task Commands ----
 
 #[tauri::command]

@@ -353,6 +353,58 @@ impl RcloneMgr {
         Ok(resp)
     }
 
+    pub fn copy_file(
+        &self,
+        src_fs: &str,
+        src_remote: &str,
+        dst_fs: &str,
+        dst_remote: &str,
+    ) -> Result<(), String> {
+        self.rc_call(
+            "operations/copyfile",
+            json!({
+                "srcFs": src_fs,
+                "srcRemote": src_remote,
+                "dstFs": dst_fs,
+                "dstRemote": dst_remote,
+            }),
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_file(&self, fs: &str, remote: &str) -> Result<(), String> {
+        self.rc_call(
+            "operations/deletefile",
+            json!({
+                "fs": fs,
+                "remote": remote,
+            }),
+        )?;
+        Ok(())
+    }
+
+    pub fn purge_dir(&self, fs: &str, remote: &str) -> Result<(), String> {
+        self.rc_call(
+            "operations/purge",
+            json!({
+                "fs": fs,
+                "remote": remote,
+            }),
+        )?;
+        Ok(())
+    }
+
+    pub fn mkdir(&self, fs: &str, remote: &str) -> Result<(), String> {
+        self.rc_call(
+            "operations/mkdir",
+            json!({
+                "fs": fs,
+                "remote": remote,
+            }),
+        )?;
+        Ok(())
+    }
+
     pub fn get_job_status(&self, jobid: i64) -> Result<Value, String> {
         self.rc_call("job/status", json!({ "jobid": jobid }))
     }
