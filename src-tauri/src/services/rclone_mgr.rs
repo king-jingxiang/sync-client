@@ -1,9 +1,12 @@
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 use crate::models::RemoteFile;
 
@@ -66,22 +69,25 @@ impl RcloneMgr {
             return Err(msg);
         }
 
-        let child = Command::new(bin.as_os_str())
-            .args([
-                "rcd",
-                &format!("--rc-addr={}:{}", RCLONE_RC_ADDR, RCLONE_RC_PORT),
-                "--rc-no-auth",
-                "--rc-allow-origin=*",
-                "--use-json-log",
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| {
-                let msg = format!("Failed to start rclone daemon: {}", e);
-                log::error!("{}", msg);
-                msg
-            })?;
+        let mut cmd = Command::new(bin.as_os_str());
+        cmd.args([
+            "rcd",
+            &format!("--rc-addr={}:{}", RCLONE_RC_ADDR, RCLONE_RC_PORT),
+            "--rc-no-auth",
+            "--rc-allow-origin=*",
+            "--use-json-log",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        let child = cmd.spawn().map_err(|e| {
+            let msg = format!("Failed to start rclone daemon: {}", e);
+            log::error!("{}", msg);
+            msg
+        })?;
 
         *proc = Some(child);
 
