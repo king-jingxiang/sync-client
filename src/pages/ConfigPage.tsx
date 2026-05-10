@@ -63,6 +63,7 @@ const TYPE_PARAMS: Record<string, { key: string; label: string; password?: boole
     { key: "url", label: "URL" },
     { key: "user", label: "User" },
     { key: "pass", label: "Password", password: true },
+    { key: "vendor", label: "Vendor (other/owncloud/nextcloud/sharepoint)" },
   ],
   local: [],
   azureblob: [
@@ -76,7 +77,7 @@ const TYPE_PARAMS: Record<string, { key: string; label: string; password?: boole
 };
 
 export function ConfigPage() {
-  const { remotes, loading, fetchRemotes, createRemote, deleteRemote, testConnection } = useConfigStore();
+  const { remotes, loading, error, fetchRemotes, createRemote, deleteRemote, testConnection } = useConfigStore();
   const [showCreate, setShowCreate] = useState(false);
   const [testingName, setTestingName] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ name: string; success: boolean; message: string } | null>(null);
@@ -87,6 +88,11 @@ export function ConfigPage() {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="rounded-md border border-[var(--destructive)] px-4 py-3 text-sm text-[var(--destructive)]">
+          错误: {error}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">配置管理</h1>
@@ -131,9 +137,14 @@ export function ConfigPage() {
                     disabled={testingName === remote.name}
                     onClick={async () => {
                       setTestingName(remote.name);
-                      const result = await testConnection(remote.name);
-                      setTestResult({ name: remote.name, ...result });
-                      setTestingName(null);
+                      try {
+                        const result = await testConnection(remote.name);
+                        setTestResult({ name: remote.name, ...result });
+                      } catch (e: any) {
+                        setTestResult({ name: remote.name, success: false, message: String(e) });
+                      } finally {
+                        setTestingName(null);
+                      }
                     }}
                   >
                     <Plug className="h-4 w-4" />
@@ -185,18 +196,22 @@ function CreateRemoteDialog({
   const [type, setType] = useState("s3");
   const [params, setParams] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const currentParams = TYPE_PARAMS[type] ?? [];
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
     setCreating(true);
+    setCreateError(null);
     try {
       await createRemote({ name: name.trim(), type, parameters: params });
       setName("");
       setType("s3");
       setParams({});
       onOpenChange(false);
+    } catch (e: any) {
+      setCreateError(String(e));
     } finally {
       setCreating(false);
     }
@@ -241,6 +256,11 @@ function CreateRemoteDialog({
             </div>
           ))}
         </div>
+        {createError && (
+          <div className="text-sm text-[var(--destructive)] py-2">
+            创建失败: {createError}
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消

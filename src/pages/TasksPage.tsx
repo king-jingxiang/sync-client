@@ -48,9 +48,9 @@ const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secon
 };
 
 export function TasksPage() {
-  const { tasks, loading, fetchTasks, deleteTask, toggleTask, runTask, cancelTask, runtimeStates } =
+  const { tasks, loading, error: taskError, fetchTasks, deleteTask, toggleTask, runTask, cancelTask, runtimeStates } =
     useTaskStore();
-  const { remotes, fetchRemotes } = useConfigStore();
+  const { remotes, error: configError, fetchRemotes } = useConfigStore();
   const [showCreate, setShowCreate] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
@@ -61,6 +61,12 @@ export function TasksPage() {
 
   return (
     <div className="space-y-6">
+      {(taskError || configError) && (
+        <div className="rounded-md border border-[var(--destructive)] px-4 py-3 text-sm text-[var(--destructive)]">
+          {taskError && <div>任务错误: {taskError}</div>}
+          {configError && <div>配置错误: {configError}</div>}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">同步任务</h1>

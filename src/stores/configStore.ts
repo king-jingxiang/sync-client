@@ -24,7 +24,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       const remotes: Remote[] = await Promise.all(
         names.map(async (name) => {
           try {
-            return await api.getRemoteConfig(name);
+            const config = await api.getRemoteConfig(name);
+            return Object.assign({ name }, config);
           } catch {
             return { name, type: "unknown" };
           }

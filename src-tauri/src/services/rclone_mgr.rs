@@ -49,15 +49,21 @@ impl RcloneMgr {
             if let Some(ref mut child) = *proc {
                 match child.try_wait() {
                     Ok(Some(_)) => { /* process exited, restart */ }
-                    Ok(None) => return Ok(()), // still running
+                    Ok(None) => {
+                        log::debug!("rclone daemon already running");
+                        return Ok(());
+                    } // still running
                     Err(e) => return Err(e.to_string()),
                 }
             }
         }
 
         let bin = self.get_rclone_bin();
+        log::info!("Starting rclone daemon from: {}", bin.display());
         if !bin.exists() {
-            return Err(format!("rclone binary not found at: {}", bin.display()));
+            let msg = format!("rclone binary not found at: {}", bin.display());
+            log::error!("{}", msg);
+            return Err(msg);
         }
 
         let child = Command::new(bin.as_os_str())
@@ -71,19 +77,26 @@ impl RcloneMgr {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
-            .map_err(|e| format!("Failed to start rclone daemon: {}", e))?;
+            .map_err(|e| {
+                let msg = format!("Failed to start rclone daemon: {}", e);
+                log::error!("{}", msg);
+                msg
+            })?;
 
         *proc = Some(child);
 
         // Wait for rclone to become ready
-        for _ in 0..30 {
+        for i in 0..30 {
             std::thread::sleep(Duration::from_millis(500));
             if self.health_check() {
+                log::info!("rclone daemon ready after {}ms", (i + 1) * 500);
                 return Ok(());
             }
         }
 
-        Err("rclone daemon failed to start within 15 seconds".to_string())
+        let msg = "rclone daemon failed to start within 15 seconds".to_string();
+        log::error!("{}", msg);
+        Err(msg)
     }
 
     pub fn stop_daemon(&self) -> Result<(), String> {
@@ -143,6 +156,7 @@ impl RcloneMgr {
     // ---- Config operations ----
 
     pub fn list_remotes(&self) -> Result<Vec<String>, String> {
+        log::debug!("Listing remotes via RC API");
         let resp = self.rc_call("config/listremotes", json!({}))?;
         let remotes = resp
             .get("remotes")
@@ -167,19 +181,17 @@ impl RcloneMgr {
         remote_type: &str,
         parameters: &std::collections::HashMap<String, String>,
     ) -> Result<(), String> {
-        let mut params = json!({
+        let params = json!({
             "name": name,
             "type": remote_type,
             "parameters": parameters,
         });
-        // Opt field is required for some remotes
-        let mut opt = serde_json::Map::new();
-        for (k, v) in parameters {
-            opt.insert(k.clone(), json!(v));
-        }
-        params["opt"] = Value::Object(opt);
-
+        log::info!(
+            "Creating remote '{}' type='{}' params={:?}",
+            name, remote_type, parameters
+        );
         self.rc_call("config/create", params)?;
+        log::info!("Remote '{}' created successfully", name);
         Ok(())
     }
 
