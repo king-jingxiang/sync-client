@@ -266,8 +266,11 @@ pub fn toggle_task(state: State<'_, AppState>, task_id: i64, enabled: bool) -> R
 // ---- Sync Commands ----
 
 #[tauri::command]
-pub fn scan_diff(state: State<'_, AppState>, task_id: i64) -> Result<Vec<SyncChange>, String> {
-    state.task_engine.scan_diff(task_id)
+pub async fn scan_diff(state: State<'_, AppState>, task_id: i64) -> Result<Vec<SyncChange>, String> {
+    let engine = state.task_engine.clone();
+    tauri::async_runtime::spawn_blocking(move || engine.scan_diff(task_id))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

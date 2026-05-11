@@ -9,7 +9,7 @@ use services::{fs_watcher::FsWatcherService, rclone_mgr::RcloneMgr, task_engine:
 use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
 
@@ -52,7 +52,10 @@ pub fn run() {
             let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
+            let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
+                .expect("Failed to load tray icon");
             TrayIconBuilder::new()
+                .icon(icon)
                 .menu(&menu)
                 .tooltip("SyncClient - 文件同步客户端")
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -68,11 +71,14 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let tauri::tray::TrayIconEvent::Click { .. } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                    if let TrayIconEvent::Click { button, .. } = event {
+                        // 只响应左键点击，右键留给菜单弹出
+                        if button == MouseButton::Left {
+                            let app = tray.app_handle();
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
                         }
                     }
                 })

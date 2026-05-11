@@ -71,7 +71,12 @@ impl TaskEngine {
             _ => return Err("Invalid direction".to_string()),
         };
 
-        let diff_result = self.rclone.check_diff(&src_fs, &dst_fs)?;
+        log::info!("scan_diff: listing src_fs={}", src_fs);
+        let src_files = self.rclone.list_all_files(&src_fs)?;
+        log::info!("scan_diff: listing dst_fs={}", dst_fs);
+        let dst_files = self.rclone.list_all_files(&dst_fs)?;
+
+        log::info!("scan_diff: src_files={}, dst_files={}", src_files.len(), dst_files.len());
 
         // Create a sync_log entry for this scan
         let now = chrono::Utc::now().to_rfc3339();
@@ -82,83 +87,135 @@ impl TaskEngine {
             started_at: now,
         })?;
 
-        // Parse diff results into changes
+        // Compare file lists to find differences
         let mut changes = Vec::new();
-        if let Some(missing) = diff_result.get("MissingOnSrc") {
-            if let Some(arr) = missing.as_array() {
-                for item in arr {
-                    if let Some(path) = item.as_str() {
-                        changes.push(NewSyncChange {
-                            log_id,
-                            file_path: path.to_string(),
-                            change_type: "deleted".to_string(),
-                            side: Some("remote".to_string()),
-                            local_size: None,
-                            remote_size: None,
-                            local_modtime: None,
-                            remote_modtime: None,
-                        });
-                    }
+
+        // Files in src but not in dst => added
+        for (path, entry) in &src_files {
+            if !dst_files.contains_key(path) {
+                let (local_size, remote_size, local_modtime, remote_modtime, side) =
+                    match task.direction.as_str() {
+                        "upload" | "bisync" => (
+                            Some(entry.size),
+                            None,
+                            entry.mod_time,
+                            None,
+                            Some("local".to_string()),
+                        ),
+                        "download" => (
+                            None,
+                            Some(entry.size),
+                            None,
+                            entry.mod_time,
+                            Some("remote".to_string()),
+                        ),
+                        _ => (None, None, None, None, None),
+                    };
+                changes.push(NewSyncChange {
+                    log_id,
+                    file_path: path.clone(),
+                    change_type: "added".to_string(),
+                    side,
+                    local_size,
+                    remote_size,
+                    local_modtime,
+                    remote_modtime,
+                });
+            }
+        }
+
+        // Files in dst but not in src => deleted
+        for (path, entry) in &dst_files {
+            if !src_files.contains_key(path) {
+                let (local_size, remote_size, local_modtime, remote_modtime, side) =
+                    match task.direction.as_str() {
+                        "upload" | "bisync" => (
+                            None,
+                            Some(entry.size),
+                            None,
+                            entry.mod_time,
+                            Some("remote".to_string()),
+                        ),
+                        "download" => (
+                            Some(entry.size),
+                            None,
+                            entry.mod_time,
+                            None,
+                            Some("local".to_string()),
+                        ),
+                        _ => (None, None, None, None, None),
+                    };
+                changes.push(NewSyncChange {
+                    log_id,
+                    file_path: path.clone(),
+                    change_type: "deleted".to_string(),
+                    side,
+                    local_size,
+                    remote_size,
+                    local_modtime,
+                    remote_modtime,
+                });
+            }
+        }
+
+        // Files in both but possibly modified or conflicting
+        for (path, src_entry) in &src_files {
+            if let Some(dst_entry) = dst_files.get(path) {
+                let src_mod = src_entry.mod_time.unwrap_or(0);
+                let dst_mod = dst_entry.mod_time.unwrap_or(0);
+                let src_size = src_entry.size;
+                let dst_size = dst_entry.size;
+
+                if src_size != dst_size || src_mod != dst_mod {
+                    // Determine change type based on direction and modification times
+                    let (change_type, side) = if task.direction == "bisync" {
+                        // For bisync, if both modified differently it's a conflict
+                        if src_size != dst_size && src_mod != dst_mod && src_mod != 0 && dst_mod != 0 {
+                            ("conflict".to_string(), None)
+                        } else if src_mod > dst_mod {
+                            ("modified".to_string(), Some("local".to_string()))
+                        } else if dst_mod > src_mod {
+                            ("modified".to_string(), Some("remote".to_string()))
+                        } else {
+                            ("modified".to_string(), None)
+                        }
+                    } else {
+                        // For upload/download, any difference is a modification
+                        ("modified".to_string(), None)
+                    };
+
+                    let (local_size, remote_size, local_modtime, remote_modtime) =
+                        match task.direction.as_str() {
+                            "upload" | "bisync" => (
+                                Some(src_size),
+                                Some(dst_size),
+                                src_entry.mod_time,
+                                dst_entry.mod_time,
+                            ),
+                            "download" => (
+                                Some(dst_size),
+                                Some(src_size),
+                                dst_entry.mod_time,
+                                src_entry.mod_time,
+                            ),
+                            _ => (None, None, None, None),
+                        };
+
+                    changes.push(NewSyncChange {
+                        log_id,
+                        file_path: path.clone(),
+                        change_type,
+                        side,
+                        local_size,
+                        remote_size,
+                        local_modtime,
+                        remote_modtime,
+                    });
                 }
             }
         }
 
-        if let Some(missing) = diff_result.get("MissingOnDst") {
-            if let Some(arr) = missing.as_array() {
-                for item in arr {
-                    if let Some(path) = item.as_str() {
-                        changes.push(NewSyncChange {
-                            log_id,
-                            file_path: path.to_string(),
-                            change_type: "added".to_string(),
-                            side: Some("local".to_string()),
-                            local_size: None,
-                            remote_size: None,
-                            local_modtime: None,
-                            remote_modtime: None,
-                        });
-                    }
-                }
-            }
-        }
-
-        if let Some(matched) = diff_result.get("Match") {
-            if let Some(arr) = matched.as_array() {
-                for item in arr {
-                    if let Some(path) = item.as_str() {
-                        changes.push(NewSyncChange {
-                            log_id,
-                            file_path: path.to_string(),
-                            change_type: "modified".to_string(),
-                            side: None,
-                            local_size: None,
-                            remote_size: None,
-                            local_modtime: None,
-                            remote_modtime: None,
-                        });
-                    }
-                }
-            }
-        }
-
-        if let Some(differ) = diff_result.get("Differ") {
-            if let Some(arr) = differ.as_array() {
-                for item in arr {
-                    if let Some(path) = item.as_str() {
-                        changes.push(NewSyncChange {
-                            log_id,
-                            file_path: path.to_string(),
-                            change_type: "conflict".to_string(),
-                            side: None,
-                            local_size: None,
-                            remote_size: None,
-                            local_modtime: None,
-                            remote_modtime: None,
-                        });
-                    }
-                }
-            }
-        }
+        log::info!("scan_diff: found {} changes", changes.len());
 
         self.db.insert_sync_changes(&changes)?;
         let sync_changes = self.db.get_sync_changes(log_id)?;

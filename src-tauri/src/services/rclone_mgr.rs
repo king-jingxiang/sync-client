@@ -343,20 +343,65 @@ impl RcloneMgr {
         Ok(jobid)
     }
 
-    pub fn check_diff(
+    /// List all files (recursively) under the given fs, returning a map of
+    /// relative_path -> (size, mod_time_unix_seconds).
+    pub fn list_all_files(
         &self,
-        src_fs: &str,
-        dst_fs: &str,
-    ) -> Result<Value, String> {
-        let resp = self.rc_call(
-            "operations/check",
-            json!({
-                "srcFs": src_fs,
-                "dstFs": dst_fs,
-                "oneWay": true,
-            }),
-        )?;
-        Ok(resp)
+        fs: &str,
+    ) -> Result<std::collections::HashMap<String, FileEntry>, String> {
+        let mut all_files = std::collections::HashMap::new();
+        let mut queue = vec![String::new()]; // start from root
+
+        while let Some(remote) = queue.pop() {
+            let resp = self.rc_call(
+                "operations/list",
+                json!({ "fs": fs, "remote": remote }),
+            )?;
+
+            let list = resp
+                .get("list")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            for item in &list {
+                let is_dir = item.get("IsDir").and_then(|v| v.as_bool()).unwrap_or(false);
+                let _path = item
+                    .get("Path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let name = item
+                    .get("Name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                if is_dir {
+                    let subdir = if remote.is_empty() || remote == "/" {
+                        name.to_string()
+                    } else {
+                        format!("{}/{}", remote.trim_end_matches('/'), name)
+                    };
+                    queue.push(subdir);
+                } else {
+                    let size = item.get("Size").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let mod_time = item
+                        .get("ModTime")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let mod_ts = parse_iso8601_to_unix(mod_time);
+
+                    let rel_path = if remote.is_empty() || remote == "/" {
+                        name.to_string()
+                    } else {
+                        format!("{}/{}", remote.trim_end_matches('/'), name)
+                    };
+
+                    all_files.insert(rel_path, FileEntry { size, mod_time: mod_ts });
+                }
+            }
+        }
+
+        Ok(all_files)
     }
 
     pub fn copy_file(
@@ -425,4 +470,26 @@ impl Drop for RcloneMgr {
     fn drop(&mut self) {
         let _ = self.stop_daemon();
     }
+}
+
+/// A file entry with size and modification time.
+#[derive(Debug, Clone)]
+pub struct FileEntry {
+    pub size: i64,
+    pub mod_time: Option<i64>,
+}
+
+/// Parse an ISO 8601 datetime string into a unix timestamp (seconds).
+fn parse_iso8601_to_unix(s: &str) -> Option<i64> {
+    use chrono::DateTime;
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Some(dt.timestamp());
+    }
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ") {
+        return Some(dt.and_utc().timestamp());
+    }
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%SZ") {
+        return Some(dt.and_utc().timestamp());
+    }
+    None
 }
