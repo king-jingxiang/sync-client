@@ -306,6 +306,48 @@ impl Database {
         Ok(())
     }
 
+    /// Count changes by type for a given log_id.
+    /// Returns (added_count, modified_count, deleted_count, conflict_count, total_changes).
+    pub fn count_changes_by_type(&self, log_id: i64) -> Result<(i64, i64, i64, i64, i64), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let added: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_changes WHERE log_id = ?1 AND change_type = 'added'",
+                params![log_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let modified: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_changes WHERE log_id = ?1 AND change_type = 'modified'",
+                params![log_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let deleted: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_changes WHERE log_id = ?1 AND change_type = 'deleted'",
+                params![log_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let conflict: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_changes WHERE log_id = ?1 AND change_type = 'conflict'",
+                params![log_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let total: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_changes WHERE log_id = ?1",
+                params![log_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok((added, modified, deleted, conflict, total))
+    }
+
     // ---- Settings ----
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>, String> {

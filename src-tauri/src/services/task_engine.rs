@@ -218,6 +218,22 @@ impl TaskEngine {
         log::info!("scan_diff: found {} changes", changes.len());
 
         self.db.insert_sync_changes(&changes)?;
+
+        // Count changes by type and update the sync_log
+        let (added_count, modified_count, deleted_count, conflict_count, total_count) =
+            self.db.count_changes_by_type(log_id)?;
+        let _ = self.db.update_sync_log(
+            log_id,
+            "completed",
+            total_count,
+            0, // transferred_bytes - scan only, no actual transfer
+            added_count,
+            modified_count + conflict_count, // treat conflict as modified for display
+            deleted_count,
+            0, // error_count
+            None,
+        );
+
         let sync_changes = self.db.get_sync_changes(log_id)?;
 
         self.update_state(task_id, TaskState::Idle, 0.0, None, 0.0, None, None);
@@ -332,18 +348,45 @@ impl TaskEngine {
                                     .unwrap_or(false);
 
                                 if finished {
-                                    let total_files = status
+                                    // rclone job/status may put stats at top level or inside "stats" object
+                                    let stats = status.get("stats").cloned().unwrap_or(status.clone());
+
+                                    let total_files = stats
                                         .get("totalTransfers")
                                         .and_then(|v| v.as_i64())
+                                        .or_else(|| stats.get("transfers").and_then(|v| v.as_i64()))
+                                        .or_else(|| status.get("totalTransfers").and_then(|v| v.as_i64()))
                                         .unwrap_or(0);
-                                    let transferred_bytes = status
+                                    let transferred_bytes = stats
                                         .get("totalBytes")
                                         .and_then(|v| v.as_i64())
+                                        .or_else(|| stats.get("bytes").and_then(|v| v.as_i64()))
+                                        .or_else(|| status.get("totalBytes").and_then(|v| v.as_i64()))
                                         .unwrap_or(0);
-                                    let error_count = status
+                                    let error_count = stats
                                         .get("totalErrorCount")
                                         .and_then(|v| v.as_i64())
+                                        .or_else(|| stats.get("errors").and_then(|v| v.as_i64()))
+                                        .or_else(|| stats.get("totalErrors").and_then(|v| v.as_i64()))
+                                        .or_else(|| status.get("totalErrorCount").and_then(|v| v.as_i64()))
                                         .unwrap_or(0);
+
+                                    // Count transferred files from the transferred array
+                                    let transferred_arr = status
+                                        .get("transferred")
+                                        .and_then(|v| v.as_array())
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    let transfer_count = transferred_arr.len() as i64;
+
+                                    // Use the larger of totalTransfers vs counted transfers
+                                    let effective_total = std::cmp::max(total_files, transfer_count);
+
+                                    // For run_task, all transferred files are treated as added/modified
+                                    // (sync/sync doesn't distinguish between new vs modified)
+                                    let added_count = effective_total; // sync treats all as additions
+                                    let modified_count = 0i64;
+                                    let deleted_count = 0i64;
 
                                     if success {
                                         engine_self.update_state(
@@ -358,11 +401,11 @@ impl TaskEngine {
                                         let _ = db.update_sync_log(
                                             log_id,
                                             "completed",
-                                            total_files,
+                                            effective_total,
                                             transferred_bytes,
-                                            0,
-                                            0,
-                                            0,
+                                            added_count,
+                                            modified_count,
+                                            deleted_count,
                                             error_count,
                                             None,
                                         );
@@ -379,11 +422,11 @@ impl TaskEngine {
                                         let _ = db.update_sync_log(
                                             log_id,
                                             "failed",
-                                            total_files,
+                                            effective_total,
                                             transferred_bytes,
-                                            0,
-                                            0,
-                                            0,
+                                            added_count,
+                                            modified_count,
+                                            deleted_count,
                                             error_count,
                                             None,
                                         );
