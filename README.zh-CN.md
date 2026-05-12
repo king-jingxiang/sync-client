@@ -71,7 +71,7 @@ SyncClient 是一款轻量、跨平台的桌面应用，为 [rclone](https://rcl
 
 ### 下载预编译安装包
 
-从 [Releases](https://github.com/YOUR_USERNAME/sync-client/releases) 页面下载适合你平台的最新版本。
+从 [Releases](https://github.com/king-jingxiang/sync-client/releases) 页面下载适合你平台的最新版本。
 
 | 平台 | 安装包 |
 |------|--------|
@@ -98,7 +98,7 @@ SyncClient 是一款轻量、跨平台的桌面应用，为 [rclone](https://rcl
 
 ```bash
 # 克隆仓库
-git clone https://github.com/YOUR_USERNAME/sync-client.git
+git clone https://github.com/king-jingxiang/sync-client.git
 cd sync-client
 
 # 安装前端依赖

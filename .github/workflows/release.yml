@@ -37,7 +37,7 @@ jobs:
               tag_name: `v${process.env.PACKAGE_VERSION}`,
               name: `SyncClient v${process.env.PACKAGE_VERSION}`,
               body: 'Take a look at the assets to download and install this version.',
-              draft: true,
+              draft: false,
               prerelease: false
             })
             return data.id
@@ -88,7 +88,7 @@ jobs:
       - name: install frontend dependencies
         run: npm install
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v0.5.22
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
